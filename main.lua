@@ -1,5 +1,5 @@
 -- ==========================================
--- RUNE HUB | MAIN COMBINED SCRIPT (V5.3 FIXED SKILL NAME MATCHING)
+-- RUNE HUB | MAIN COMBINED SCRIPT (V5.4 UPDATED GITHUB PATH)
 -- ==========================================
 
 local UserInputService = game:GetService("UserInputService")
@@ -15,11 +15,11 @@ local LocalPlayer = Players.LocalPlayer
 local Remote = ReplicatedStorage:WaitForChild("RuneWeaponSkillRemote", 10)
 
 -- ==========================================
--- 1. QUÉT FOLDER SKILL TỪ GITHUB
+-- 1. QUÉT FOLDER SKILL TỪ GITHUB (UPDATED)
 -- ==========================================
 local REPO_OWNER = "tinvn1"
-local REPO_NAME = "tin"
-local FOLDER_PATH = "ReplicatedStorage/SkillPatterns"
+local REPO_NAME = "ht1708"
+local FOLDER_PATH = "SkillPatterns"
 local API_URL = string.format("https://api.github.com/repos/%s/%s/contents/%s", REPO_OWNER, REPO_NAME, FOLDER_PATH)
 
 local SkillList = {}
@@ -53,7 +53,7 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/d
 
 local Window = Fluent:CreateWindow({
     Title = "Rune Hub | Mobile",
-    SubTitle = "v5.3 Exact Skill Match Fix",
+    SubTitle = "v5.4 Fixed GitHub Repository Path",
     TabWidth = 135,
     Size = UDim2.fromOffset(580, 360),
     Acrylic = false,
@@ -393,7 +393,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ==========================================
--- 6. HỆ THỐNG AUTO PICKUP (EXACT SKILL MATCHING)
+-- 6. HỆ THỐNG AUTO PICKUP
 -- ==========================================
 local Rarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical", "Divine", "Secret" }
 local StatOptions = { 
@@ -449,21 +449,16 @@ local function passesDropFilter(model, prompt)
 
     local fullModelName = (itemName .. " " .. promptText):lower()
 
-    -- -------------------------------------------------------------
-    -- 1. LỌC SKILL (ĐÃ FIX: EXACT MATCH / WORD BOUNDARY)
-    -- -------------------------------------------------------------
     local isActualSkill = (itemCategory == "skill" or itemType == "skill" or skillId ~= "") 
                           and not fullModelName:find("armor") and not fullModelName:find("gloves") and not fullModelName:find("robe")
 
     if isActualSkill then
         if #activeSkills > 0 then
             for _, skillName in ipairs(activeSkills) do
-                -- Ưu tiên exact match
                 if skillId == skillName or itemName == skillName then
                     return true
                 end
 
-                -- Sử dụng Pattern Word Boundary để "fairy" không dính sang "fairy staff" hay "fairy sword"
                 local pattern = "%f[%a]" .. skillName .. "%f[%A]"
                 if fullModelName:find(pattern) then
                     return true
@@ -473,9 +468,6 @@ local function passesDropFilter(model, prompt)
         return false
     end
 
-    -- -------------------------------------------------------------
-    -- 2. LỌC RING
-    -- -------------------------------------------------------------
     local isRing = itemType == "ring" or itemCategory == "ring" or fullModelName:find("ring", 1, true) ~= nil
 
     if isRing then
@@ -504,9 +496,6 @@ local function passesDropFilter(model, prompt)
         return true
     end
 
-    -- -------------------------------------------------------------
-    -- 3. LỌC TRANG BỊ THƯỜNG
-    -- -------------------------------------------------------------
     if #activeRarities == 0 and #activeStats == 0 then return false end
 
     local rarityMatch = false
@@ -1164,6 +1153,6 @@ SaveManager:LoadAutoloadConfig()
 
 Fluent:Notify({
     Title = "Rune Hub Mobile",
-    Content = "Đã fix lỗi trùng tên Skill (Fairy, Fairy Staff, Fairy Sword)!",
+    Content = "tindeptrai",
     Duration = 5
 })
