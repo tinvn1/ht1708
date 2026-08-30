@@ -1,5 +1,5 @@
 -- ==========================================
--- RUNE HUB | MAIN COMBINED SCRIPT (V5.4 UPDATED GITHUB PATH)
+-- TÍN HUB | MAIN COMBINED SCRIPT (V5.5 FULL UPDATED UI)
 -- ==========================================
 
 local UserInputService = game:GetService("UserInputService")
@@ -15,7 +15,7 @@ local LocalPlayer = Players.LocalPlayer
 local Remote = ReplicatedStorage:WaitForChild("RuneWeaponSkillRemote", 10)
 
 -- ==========================================
--- 1. QUÉT FOLDER SKILL TỪ GITHUB (UPDATED)
+-- 1. QUÉT FOLDER SKILL TỪ GITHUB
 -- ==========================================
 local REPO_OWNER = "tinvn1"
 local REPO_NAME = "ht1708"
@@ -52,8 +52,8 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "Rune Hub | Mobile",
-    SubTitle = "v5.4 Fixed GitHub Repository Path",
+    Title = "Tín Hub | Mobile & PC",
+    SubTitle = "v5.5 Dynamic UI Upgrade",
     TabWidth = 135,
     Size = UDim2.fromOffset(580, 360),
     Acrylic = false,
@@ -154,7 +154,14 @@ local function toggleSpamSlot(slotNum, state)
     end
 
     if MobileButtons[slotNum] then
-        MobileButtons[slotNum].BackgroundColor3 = cfg.IsSpamming and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(25, 25, 35)
+        local stroke = MobileButtons[slotNum]:FindFirstChildOfClass("UIStroke")
+        if cfg.IsSpamming then
+            MobileButtons[slotNum].BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+            if stroke then stroke.Color = Color3.fromRGB(0, 255, 150) end
+        else
+            MobileButtons[slotNum].BackgroundColor3 = Color3.fromRGB(20, 24, 35)
+            if stroke then stroke.Color = Color3.fromRGB(0, 170, 255) end
+        end
     end
 end
 
@@ -178,7 +185,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 -- ==========================================
--- 4. LOGIC AUTO DI CHUYỂN PHÁ KIẾN TRÚC & ƯU TIÊN FAIRY BOSS
+-- 4. LOGIC AUTO DI CHUYỂN PHÁ KIẾN TRÚC & FAIRY BOSS
 -- ==========================================
 local StructureConfig = {
     Enabled = false,
@@ -302,7 +309,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 -- ==========================================
--- 5. HỆ THỐNG AUTO PLAY ISLANDS & AUTO RE-TELEPORT
+-- 5. AUTO PLAY ISLANDS & AUTO RE-TELEPORT
 -- ==========================================
 local ManualPinnedCFrame = nil
 
@@ -659,7 +666,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ==========================================
--- 8. LOGIC ĐỘN THỔ & BỆ ĐỨNG CỐ ĐỊNH TẠI CHỐ
+-- 8. ĐỘN THỔ & BỆ ĐỨNG CỐ ĐỊNH TẠI CHỐ
 -- ==========================================
 local AutoUndergroundEnabled = false
 local UndergroundOffset = -10
@@ -758,7 +765,7 @@ local function findAndJoinMyServer()
 end
 
 -- ==========================================
--- 10. DỰNG GIAO DIỆN CHÍNH (FLUENT UI)
+-- 10. DỰNG GIAO DIỆN FLUENT UI
 -- ==========================================
 
 -- TAB 1: SKILL SLOTS
@@ -1058,7 +1065,7 @@ Tabs.Settings:AddButton({
 })
 
 -- ==========================================
--- 11. GIAO DIỆN NÚT SKILL MOBILE
+-- 11. GIAO DIỆN NÚT SKILL MOBILE & PC NÂNG CẤP (ĐẸP & RÕ CHỮ)
 -- ==========================================
 local function createMobileUI()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -1070,31 +1077,40 @@ local function createMobileUI()
     screenGui.Parent = playerGui
 
     local container = Instance.new("Frame")
-    container.Size = UDim2.new(0, 280, 0, 70)
-    container.Position = UDim2.new(0.5, -140, 0.82, 0)
+    container.Size = UDim2.new(0, 300, 0, 70)
+    container.Position = UDim2.new(0.5, -150, 0.82, 0)
     container.BackgroundTransparency = 1
     container.Parent = screenGui
 
     for slot = 1, 4 do
         local btn = Instance.new("TextButton")
         btn.Name = "SkillBtn_" .. slot
-        btn.Size = UDim2.new(0, 60, 0, 60)
-        btn.Position = UDim2.new(0, (slot - 1) * 70, 0, 0)
-        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Size = UDim2.new(0, 65, 0, 65)
+        btn.Position = UDim2.new(0, (slot - 1) * 75, 0, 0)
+        btn.BackgroundColor3 = Color3.fromRGB(20, 24, 35)
+        btn.TextColor3 = Color3.fromRGB(0, 210, 255)
         btn.TextScaled = true
-        btn.Font = Enum.Font.SourceSansBold
+        btn.Font = Enum.Font.GothamBold
         btn.Visible = false
+        btn.BorderSizePixel = 0
         btn.Parent = container
 
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
+        corner.CornerRadius = UDim.new(0, 12)
         corner.Parent = btn
 
         local stroke = Instance.new("UIStroke")
         stroke.Color = Color3.fromRGB(0, 170, 255)
         stroke.Thickness = 2
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         stroke.Parent = btn
+
+        local padding = Instance.new("UIPadding")
+        padding.PaddingTop = UDim.new(0.12, 0)
+        padding.PaddingBottom = UDim.new(0.12, 0)
+        padding.PaddingLeft = UDim.new(0.08, 0)
+        padding.PaddingRight = UDim.new(0.08, 0)
+        padding.Parent = btn
 
         MobileButtons[slot] = btn
         btn.MouseButton1Click:Connect(function() handleSkillTrigger(slot) end)
@@ -1104,7 +1120,7 @@ end
 task.spawn(createMobileUI)
 
 -- ==========================================
--- 12. NÚT TOGGLE UI MOBILE
+-- 12. NÚT TOGGLE UI TÍN HUB (KÉO THẢ & PHÁT SÁNG)
 -- ==========================================
 task.spawn(function()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -1113,29 +1129,70 @@ task.spawn(function()
     local toggleGui = Instance.new("ScreenGui")
     toggleGui.Name = "MobileToggleGui"
     toggleGui.ResetOnSpawn = false
-    toggleGui.Parent = toggleGui
+    toggleGui.Parent = playerGui
 
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Name = "ToggleHubBtn"
-    toggleBtn.Size = UDim2.new(0, 45, 0, 45)
+    toggleBtn.Size = UDim2.new(0, 55, 0, 55)
     toggleBtn.Position = UDim2.new(0.05, 0, 0.15, 0)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    toggleBtn.TextColor3 = Color3.fromRGB(0, 170, 255)
-    toggleBtn.Text = "RUNE"
-    toggleBtn.TextSize = 11
-    toggleBtn.Font = Enum.Font.SourceSansBold
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(20, 24, 35)
+    toggleBtn.TextColor3 = Color3.fromRGB(0, 210, 255)
+    toggleBtn.Text = "TÍN\nHUB"
+    toggleBtn.TextScaled = true
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.BorderSizePixel = 0
     toggleBtn.Active = true
-    toggleBtn.Draggable = true
     toggleBtn.Parent = toggleGui
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
+    corner.CornerRadius = UDim.new(0.5, 0)
     corner.Parent = toggleBtn
 
     local stroke = Instance.new("UIStroke")
     stroke.Color = Color3.fromRGB(0, 170, 255)
-    stroke.Thickness = 2
+    stroke.Thickness = 2.5
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = toggleBtn
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0.15, 0)
+    padding.PaddingBottom = UDim.new(0.15, 0)
+    padding.PaddingLeft = UDim.new(0.1, 0)
+    padding.PaddingRight = UDim.new(0.1, 0)
+    padding.Parent = toggleBtn
+
+    -- Logic Kéo Thả Mượt Mà
+    local dragging, dragInput, dragStart, startPos
+    local function update(input)
+        local delta = input.Position - dragStart
+        toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+
+    toggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleBtn.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    toggleBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
 
     toggleBtn.MouseButton1Click:Connect(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
@@ -1147,12 +1204,12 @@ end)
 -- 13. KHỞI TẠO SAVE MANAGER & NOTIFY
 -- ==========================================
 SaveManager:SetLibrary(Fluent)
-SaveManager:SetFolder("RuneHub/MainSystem")
+SaveManager:SetFolder("TinHub/MainSystem")
 SaveManager:BuildConfigSection(Tabs.Settings)
 SaveManager:LoadAutoloadConfig()
 
 Fluent:Notify({
-    Title = "Rune Hub Mobile",
-    Content = "tindeptrai",
+    Title = "Tín Hub Mobile & PC",
+    Content = "Đã tải thành công giao diện mới!",
     Duration = 5
 })
