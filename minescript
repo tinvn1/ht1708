@@ -1,1 +1,569 @@
+-- ==========================================
+-- SCRIPT AUTO MINER & GACHA ROLL (AUTO RESET CHARACTER)
+-- ==========================================
 
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local CONFIG_FILE = "MiningConfig.json"
+
+-- 1. CLASS CRYSTAL MINER & ROLL GACHA
+local CrystalMiner = {}
+CrystalMiner.__index = CrystalMiner
+
+function CrystalMiner.new()
+    local self = setmetatable({}, CrystalMiner)
+    
+    -- Config Mặc Định
+    self.Config = {
+        Enabled = false,
+        AutoClick = true,
+        DistanceOffset = 3.0,
+        ClickInterval = 0.02,
+        SelectedRarity = "Divine",
+        SelectedColor = "All",
+        
+        -- CFrame cố định mặc định
+        BaseCFrameComponents = {-1852.792, -47.237, 1388.105, -0.276, 0.000, 0.961, 0.000, 1.000, 0.000, -0.961, 0.000, -0.276},
+        
+        -- Auto Roll Config
+        AutoRollEnabled = false,
+        RollAmount = 10,
+        RollDelay = 0.5,
+
+        -- Auto Reset Config (Mới)
+        AutoResetEnabled = true,
+        AutoResetInterval = 60 -- Thời gian tự reset (Giây)
+    }
+    
+    self.BaseCFrame = CFrame.new(unpack(self.Config.BaseCFrameComponents))
+    self.BlacklistedCrystals = {}
+    
+    self.RarityRank = {
+        ["divine"]    = 7,
+        ["secret"]    = 6,
+        ["mythic"]    = 5,
+        ["mythical"]  = 5,
+        ["legend"]    = 4,
+        ["legendary"] = 4,
+        ["epic"]      = 3,
+        ["rare"]      = 2,
+        ["common"]    = 1,
+        ["all"]       = 0
+    }
+
+    self.RunningThread = nil
+    self.ClickThread = nil
+    self.RollThread = nil
+    self.ResetThread = nil
+    self.CurrentTarget = nil
+    
+    return self
+end
+
+-- ==========================================
+-- HỆ THỐNG XỬ LÝ AUTO SAVE / LOAD CONFIG
+-- ==========================================
+function CrystalMiner:SaveConfig()
+    if writefile then
+        local success, err = pcall(function()
+            local json = HttpService:JSONEncode(self.Config)
+            writefile(CONFIG_FILE, json)
+        end)
+        if success then
+            print("[AutoSave]: Đã lưu cấu hình vào Workspace thành công!")
+        end
+    end
+end
+
+function CrystalMiner:LoadConfig()
+    if isfile and readfile and isfile(CONFIG_FILE) then
+        local success, result = pcall(function()
+            local content = readfile(CONFIG_FILE)
+            return HttpService:JSONDecode(content)
+        end)
+        if success and type(result) == "table" then
+            for k, v in pairs(result) do
+                self.Config[k] = v
+            end
+            if self.Config.BaseCFrameComponents then
+                self.BaseCFrame = CFrame.new(unpack(self.Config.BaseCFrameComponents))
+            end
+            print("[AutoSave]: Đã tải cấu hình từ Workspace thành công!")
+        end
+    end
+end
+
+-- ==========================================
+-- CƠ CHẾ AUTO RESET CHARACTER (SAU 1 PHÚT)
+-- ==========================================
+function CrystalMiner:StartResetThread()
+    if self.ResetThread then task.cancel(self.ResetThread) end
+    self.ResetThread = task.spawn(function()
+        while self.Config.AutoResetEnabled and self.Config.Enabled do
+            task.wait(self.Config.AutoResetInterval)
+            
+            if self.Config.AutoResetEnabled and self.Config.Enabled then
+                print("[AutoReset]: Bắt đầu Reset nhân vật sau " .. tostring(self.Config.AutoResetInterval) .. " giây...")
+                
+                local char = LocalPlayer.Character
+                local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+                
+                if humanoid then
+                    humanoid.Health = 0 -- Reset nhân vật
+                end
+                
+                -- Đợi nhân vật hồi sinh lại hoàn tất
+                LocalPlayer.CharacterAdded:Wait()
+                local newChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
+                
+                if hrp and self.BaseCFrame then
+                    task.wait(1) -- Chờ tải animation & map
+                    hrp.CFrame = self.BaseCFrame
+                    print("[AutoReset]: Nhân vật đã Respawn và quay lại vị trí Base CFrame!")
+                end
+            end
+        end
+    end)
+end
+
+-- ==========================================
+-- PHƯƠNG THỨC LOGIC ĐÀO & GACHA
+-- ==========================================
+function CrystalMiner:GetFolder()
+    local caveMine = workspace:FindFirstChild("Cave Mine")
+    if caveMine then
+        return caveMine:FindFirstChild("Spawned Crystals") or caveMine:FindFirstChild("SpawnedCrystals")
+    end
+    return workspace:FindFirstChild("Spawned Crystals") or workspace:FindFirstChild("SpawnedCrystals")
+end
+
+function CrystalMiner:GetTargetCFrame(crystal)
+    if not crystal or not crystal.Parent then return nil end
+    if crystal:IsA("BasePart") then
+        return crystal.CFrame
+    elseif crystal:IsA("Model") then
+        if crystal.PrimaryPart then
+            return crystal.PrimaryPart.CFrame
+        else
+            local stone = crystal:FindFirstChild("stone") or crystal:FindFirstChildWhichIsA("BasePart", true)
+            if stone then return stone.CFrame end
+            return crystal:GetPivot()
+        end
+    end
+    return nil
+end
+
+function CrystalMiner:GetCrystalSize(crystal)
+    if not crystal then return 0 end
+    if crystal:IsA("BasePart") then
+        return crystal.Size.X * crystal.Size.Y * crystal.Size.Z
+    elseif crystal:IsA("Model") then
+        local cf, size = crystal:GetBoundingBox()
+        return size.X * size.Y * size.Z
+    end
+    return 0
+end
+
+function CrystalMiner:GetCrystalRarity(crystalName)
+    local nameLower = string.lower(crystalName)
+    if string.find(nameLower, "divine") then return "divine" end
+    if string.find(nameLower, "secret") then return "secret" end
+    if string.find(nameLower, "mythic") then return "mythic" end
+    if string.find(nameLower, "legend") then return "legend" end
+    if string.find(nameLower, "epic") then return "epic" end
+    if string.find(nameLower, "rare") then return "rare" end
+    if string.find(nameLower, "common") then return "common" end
+    return "common"
+end
+
+function CrystalMiner:IsCrystalValid(crystal)
+    if not crystal or not crystal.Parent then return false end
+    if self.BlacklistedCrystals[crystal] then return false end
+
+    local nameLower = string.lower(crystal.Name)
+    if self.Config.SelectedColor ~= "All" and not string.find(nameLower, string.lower(self.Config.SelectedColor)) then
+        return false
+    end
+    if self.Config.SelectedRarity ~= "All" then
+        local crystalRarity = self:GetCrystalRarity(crystal.Name)
+        local targetRank = self.RarityRank[string.lower(self.Config.SelectedRarity)] or 0
+        local crystalRank = self.RarityRank[crystalRarity] or 1
+        if crystalRank > targetRank then return false end
+    end
+    return true
+end
+
+function CrystalMiner:GetBestTargetCrystal()
+    local folder = self:GetFolder()
+    if not folder then return nil end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+
+    local validCrystals = {}
+    for _, crystal in ipairs(folder:GetChildren()) do
+        if self:IsCrystalValid(crystal) then
+            local cf = self:GetTargetCFrame(crystal)
+            if cf then
+                table.insert(validCrystals, {
+                    Object = crystal,
+                    CFrame = cf,
+                    Distance = (hrp.Position - cf.Position).Magnitude,
+                    Rank = self.RarityRank[self:GetCrystalRarity(crystal.Name)] or 1,
+                    Size = self:GetCrystalSize(crystal)
+                })
+            end
+        end
+    end
+    if #validCrystals == 0 then return nil end
+
+    table.sort(validCrystals, function(a, b)
+        if a.Rank ~= b.Rank then return a.Rank > b.Rank
+        elseif a.Size ~= b.Size then return a.Size > b.Size
+        else return a.Distance < b.Distance end
+    end)
+    return validCrystals[1].Object
+end
+
+function CrystalMiner:IsTargetAlive(target)
+    return target and target.Parent and target:IsDescendantOf(workspace)
+end
+
+function CrystalMiner:StartClickThread()
+    if self.ClickThread then task.cancel(self.ClickThread) end
+    self.ClickThread = task.spawn(function()
+        local safeCornerPoint = Vector2.new(10, 10)
+        while self.Config.Enabled do
+            if self.Config.AutoClick and self:IsTargetAlive(self.CurrentTarget) then
+                local char = LocalPlayer.Character
+                if char then
+                    local tool = char:FindFirstChildOfClass("Tool") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+                    if tool and tool.Parent ~= char and char:FindFirstChild("Humanoid") then
+                        char.Humanoid:EquipTool(tool)
+                    end
+                    if tool then tool:Activate() end
+
+                    local prompt = self.CurrentTarget:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if prompt then
+                        if fireproximityprompt then fireproximityprompt(prompt)
+                        else prompt:InputHoldBegin() task.wait() prompt:InputHoldEnd() end
+                    end
+
+                    VirtualUser:Button1Down(safeCornerPoint, workspace.CurrentCamera.CFrame)
+                    task.wait(0.01)
+                    VirtualUser:Button1Up(safeCornerPoint, workspace.CurrentCamera.CFrame)
+                end
+            end
+            task.wait(self.Config.ClickInterval)
+        end
+    end)
+end
+
+function CrystalMiner:StartRollThread()
+    if self.RollThread then task.cancel(self.RollThread) end
+    self.RollThread = task.spawn(function()
+        while self.Config.AutoRollEnabled do
+            local remotes = ReplicatedStorage:FindFirstChild("PickaxeGachaRemotes")
+            local rollRemote = remotes and remotes:FindFirstChild("Roll")
+
+            if rollRemote and rollRemote:IsA("RemoteFunction") then
+                pcall(function()
+                    rollRemote:InvokeServer(self.Config.RollAmount)
+                end)
+            end
+            task.wait(self.Config.RollDelay)
+        end
+    end)
+end
+
+function CrystalMiner:Start()
+    self.Config.Enabled = true
+    self:StartClickThread()
+    self:StartResetThread()
+    
+    if self.RunningThread then task.cancel(self.RunningThread) end
+
+    self.RunningThread = task.spawn(function()
+        local char = LocalPlayer.Character
+        local hrp = char and char:WaitForChild("HumanoidRootPart", 5)
+
+        if hrp and self.BaseCFrame then
+            hrp.CFrame = self.BaseCFrame
+            task.wait(0.5)
+        end
+
+        while self.Config.Enabled do
+            char = LocalPlayer.Character
+            hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+            if hrp and self:GetFolder() then
+                local target = self:GetBestTargetCrystal()
+                
+                if target and self:IsTargetAlive(target) then
+                    self.CurrentTarget = target
+                    local startTime = tick()
+
+                    while self:IsTargetAlive(target) and self.Config.Enabled do
+                        -- Chống kẹt 1 quặng quá 60s
+                        if tick() - startTime >= 60 then
+                            warn("--> Đào quặng quá 1 phút, tự chuyển quặng khác!")
+                            self.BlacklistedCrystals[target] = true
+                            break
+                        end
+
+                        local currentCF = self:GetTargetCFrame(target)
+                        if currentCF and hrp then
+                            local destination = currentCF * CFrame.new(0, 0, self.Config.DistanceOffset)
+                            hrp.CFrame = CFrame.new(destination.Position, Vector3.new(currentCF.Position.X, destination.Position.Y, currentCF.Position.Z))
+                            for _, part in ipairs(char:GetChildren()) do
+                                if part:IsA("BasePart") then part.CanCollide = false end
+                            end
+                        end
+                        task.wait(0.03)
+                    end
+                else
+                    if self.BaseCFrame then
+                        hrp.CFrame = self.BaseCFrame
+                    end
+                end
+            end
+            self.CurrentTarget = nil
+            task.wait(0.1)
+        end
+    end)
+end
+
+function CrystalMiner:Stop()
+    self.Config.Enabled = false
+    self.CurrentTarget = nil
+    if self.ClickThread then task.cancel(self.ClickThread) end
+    if self.RunningThread then task.cancel(self.RunningThread) end
+    if self.ResetThread then task.cancel(self.ResetThread) end
+end
+
+-- KHỞI TẠO TẢI CẤU HÌNH CŨ
+local MiningSystem = CrystalMiner.new()
+MiningSystem:LoadConfig()
+
+-- 2. GIAO DIỆN FLUENT UI
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Auto Miner & Roll (Auto Reset Character)",
+    SubTitle = "v9.0 Auto Reset Every 60s Added",
+    TabWidth = 150,
+    Size = UDim2.fromOffset(530, 390),
+    Acrylic = false,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Miner = Window:AddTab({ Title = "Auto Đào Quặng", Icon = "gem" }),
+    Gacha = Window:AddTab({ Title = "Auto Roll Cuốc", Icon = "sparkles" }),
+    Settings = Window:AddTab({ Title = "Cấu Hình / Config", Icon = "settings" })
+}
+
+-- TAB 1: AUTO MINING
+Tabs.Miner:AddSection("Cấu Hình Tự Động Đào AFK")
+
+Tabs.Miner:AddToggle("ToggleAutoCrystals", {
+    Title = "Bật Auto Đào Quặng",
+    Default = MiningSystem.Config.Enabled,
+    Callback = function(Value)
+        if Value then MiningSystem:Start() else MiningSystem:Stop() end
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Miner:AddButton({
+    Title = "Cập Nhật CFrame Dưới Chân Bạn",
+    Description = "Lưu vị trí đứng hiện tại làm Base Teleport",
+    Callback = function()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            MiningSystem.BaseCFrame = hrp.CFrame
+            MiningSystem.Config.BaseCFrameComponents = {hrp.CFrame:GetComponents()}
+            MiningSystem:SaveConfig()
+            Fluent:Notify({
+                Title = "Cập Nhật CFrame",
+                Content = "Đã lưu vị trí CFrame mới!",
+                Duration = 3
+            })
+        end
+    end
+})
+
+Tabs.Miner:AddToggle("ToggleCrystalClick", {
+    Title = "Tự Động Đập (Safe Click)",
+    Default = MiningSystem.Config.AutoClick,
+    Callback = function(Value) 
+        MiningSystem.Config.AutoClick = Value 
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Miner:AddDropdown("SelectCrystalRarity", {
+    Title = "Mốc Lọc Độ Hiếm",
+    Values = {"Divine", "Secret", "Mythic", "Legend", "Epic", "Rare", "Common", "All"},
+    Default = MiningSystem.Config.SelectedRarity,
+    Callback = function(Value) 
+        MiningSystem.Config.SelectedRarity = Value 
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Miner:AddDropdown("SelectCrystalColor", {
+    Title = "Lọc Theo Loại Quặng",
+    Values = {"All", "Blue", "Green", "Red", "Pluze", "Crystal Debris"},
+    Default = MiningSystem.Config.SelectedColor,
+    Callback = function(Value) 
+        MiningSystem.Config.SelectedColor = Value 
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Miner:AddSlider("CrystalDistanceOffset", {
+    Title = "Khoảng Cách Đứng Đập (Studs)",
+    Min = 1, Max = 8, Default = MiningSystem.Config.DistanceOffset, Rounding = 1,
+    Callback = function(Value) 
+        MiningSystem.Config.DistanceOffset = Value 
+        MiningSystem:SaveConfig()
+    end
+})
+
+-- TAB 2: AUTO ROLL PICKAXE GACHA
+Tabs.Gacha:AddSection("Tự Động Roll Cuốc (Pickaxe Gacha)")
+
+Tabs.Gacha:AddToggle("ToggleAutoRoll", {
+    Title = "Bật Auto Roll Pickaxe",
+    Default = MiningSystem.Config.AutoRollEnabled,
+    Callback = function(Value)
+        MiningSystem.Config.AutoRollEnabled = Value
+        if Value then
+            MiningSystem:StartRollThread()
+        else
+            if MiningSystem.RollThread then task.cancel(MiningSystem.RollThread) end
+        end
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Gacha:AddDropdown("SelectRollAmount", {
+    Title = "Số Lượng Roll Mỗi Lần",
+    Values = {"1", "10"},
+    Default = tostring(MiningSystem.Config.RollAmount),
+    Callback = function(Value)
+        MiningSystem.Config.RollAmount = tonumber(Value) or 10
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Gacha:AddSlider("RollDelaySlider", {
+    Title = "Thời Gian Trễ Giữa Các Lần Roll (Giây)",
+    Min = 0.1, Max = 3.0, Default = MiningSystem.Config.RollDelay, Rounding = 1,
+    Callback = function(Value)
+        MiningSystem.Config.RollDelay = Value
+        MiningSystem:SaveConfig()
+    end
+})
+
+-- TAB 3: CẤU HÌNH RESET & WORKSPACE
+Tabs.Settings:AddSection("Cơ Chế Auto Reset Nhân Vật")
+
+Tabs.Settings:AddToggle("ToggleAutoReset", {
+    Title = "Tự Động Reset Nhân Vật",
+    Default = MiningSystem.Config.AutoResetEnabled,
+    Callback = function(Value)
+        MiningSystem.Config.AutoResetEnabled = Value
+        if Value and MiningSystem.Config.Enabled then
+            MiningSystem:StartResetThread()
+        else
+            if MiningSystem.ResetThread then task.cancel(MiningSystem.ResetThread) end
+        end
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Settings:AddSlider("AutoResetIntervalSlider", {
+    Title = "Thời Gian Mỗi Lần Reset (Giây)",
+    Min = 30, Max = 300, Default = MiningSystem.Config.AutoResetInterval, Rounding = 0,
+    Callback = function(Value)
+        MiningSystem.Config.AutoResetInterval = Value
+        MiningSystem:SaveConfig()
+    end
+})
+
+Tabs.Settings:AddSection("Quản Lý File Config (Workspace)")
+
+Tabs.Settings:AddButton({
+    Title = "Lưu Cấu Hình Thủ Công",
+    Description = "Lưu toàn bộ cài đặt hiện tại vào tệp MiningConfig.json",
+    Callback = function()
+        MiningSystem:SaveConfig()
+        Fluent:Notify({ Title = "Auto Save", Content = "Đã lưu thủ công vào Workspace!", Duration = 3 })
+    end
+})
+
+Tabs.Settings:AddButton({
+    Title = "Xóa & Reset Config Mặc Định",
+    Description = "Xóa tệp config đã lưu trên Executor",
+    Callback = function()
+        if delfile and isfile(CONFIG_FILE) then
+            delfile(CONFIG_FILE)
+            Fluent:Notify({ Title = "Reset Config", Content = "Đã xóa file Config! Vui lòng Re-exec script.", Duration = 4 })
+        end
+    end
+})
+
+-- NÚT TOGGLE UI MOBILE
+task.spawn(function()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    if playerGui:FindFirstChild("MiningToggleGui") then playerGui.MiningToggleGui:Destroy() end
+
+    local toggleGui = Instance.new("ScreenGui")
+    toggleGui.Name = "MiningToggleGui"
+    toggleGui.ResetOnSpawn = false
+    toggleGui.Parent = playerGui
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "ToggleHubBtn"
+    toggleBtn.Size = UDim2.new(0, 55, 0, 55)
+    toggleBtn.Position = UDim2.new(0.05, 0, 0.15, 0)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(20, 24, 35)
+    toggleBtn.TextColor3 = Color3.fromRGB(0, 210, 255)
+    toggleBtn.Text = "MINER\nHUB"
+    toggleBtn.TextScaled = true
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Active = true
+    toggleBtn.Parent = toggleGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.5, 0)
+    corner.Parent = toggleBtn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 170, 255)
+    stroke.Thickness = 2.5
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = toggleBtn
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+    end)
+end)
+
+Fluent:Notify({
+    Title = "Auto Reset Activated",
+    Content = "Đã kích hoạt cơ chế Auto Reset sau 60s!",
+    Duration = 5
+})
