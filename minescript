@@ -1,5 +1,5 @@
 -- ==========================================
--- SCRIPT AUTO MINER & GACHA ROLL (AUTO RESET CHARACTER)
+-- SCRIPT AUTO MINER & GACHA ROLL (NO RESET v10.7)
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -11,33 +11,23 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local CONFIG_FILE = "MiningConfig.json"
 
--- 1. CLASS CRYSTAL MINER & ROLL GACHA
 local CrystalMiner = {}
 CrystalMiner.__index = CrystalMiner
 
 function CrystalMiner.new()
     local self = setmetatable({}, CrystalMiner)
     
-    -- Config Mặc Định
     self.Config = {
         Enabled = false,
         AutoClick = true,
         DistanceOffset = 3.0,
         ClickInterval = 0.02,
-        SelectedRarity = "Divine",
+        SelectedRarity = "Common",
         SelectedColor = "All",
-        
-        -- CFrame cố định mặc định
         BaseCFrameComponents = {-1852.792, -47.237, 1388.105, -0.276, 0.000, 0.961, 0.000, 1.000, 0.000, -0.961, 0.000, -0.276},
-        
-        -- Auto Roll Config
         AutoRollEnabled = false,
         RollAmount = 10,
-        RollDelay = 0.5,
-
-        -- Auto Reset Config (Mới)
-        AutoResetEnabled = true,
-        AutoResetInterval = 60 -- Thời gian tự reset (Giây)
+        RollDelay = 0.5
     }
     
     self.BaseCFrame = CFrame.new(unpack(self.Config.BaseCFrameComponents))
@@ -59,24 +49,17 @@ function CrystalMiner.new()
     self.RunningThread = nil
     self.ClickThread = nil
     self.RollThread = nil
-    self.ResetThread = nil
     self.CurrentTarget = nil
     
     return self
 end
 
--- ==========================================
--- HỆ THỐNG XỬ LÝ AUTO SAVE / LOAD CONFIG
--- ==========================================
 function CrystalMiner:SaveConfig()
     if writefile then
-        local success, err = pcall(function()
+        pcall(function()
             local json = HttpService:JSONEncode(self.Config)
             writefile(CONFIG_FILE, json)
         end)
-        if success then
-            print("[AutoSave]: Đã lưu cấu hình vào Workspace thành công!")
-        end
     end
 end
 
@@ -93,52 +76,14 @@ function CrystalMiner:LoadConfig()
             if self.Config.BaseCFrameComponents then
                 self.BaseCFrame = CFrame.new(unpack(self.Config.BaseCFrameComponents))
             end
-            print("[AutoSave]: Đã tải cấu hình từ Workspace thành công!")
         end
     end
 end
 
--- ==========================================
--- CƠ CHẾ AUTO RESET CHARACTER (SAU 1 PHÚT)
--- ==========================================
-function CrystalMiner:StartResetThread()
-    if self.ResetThread then task.cancel(self.ResetThread) end
-    self.ResetThread = task.spawn(function()
-        while self.Config.AutoResetEnabled and self.Config.Enabled do
-            task.wait(self.Config.AutoResetInterval)
-            
-            if self.Config.AutoResetEnabled and self.Config.Enabled then
-                print("[AutoReset]: Bắt đầu Reset nhân vật sau " .. tostring(self.Config.AutoResetInterval) .. " giây...")
-                
-                local char = LocalPlayer.Character
-                local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-                
-                if humanoid then
-                    humanoid.Health = 0 -- Reset nhân vật
-                end
-                
-                -- Đợi nhân vật hồi sinh lại hoàn tất
-                LocalPlayer.CharacterAdded:Wait()
-                local newChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
-                
-                if hrp and self.BaseCFrame then
-                    task.wait(1) -- Chờ tải animation & map
-                    hrp.CFrame = self.BaseCFrame
-                    print("[AutoReset]: Nhân vật đã Respawn và quay lại vị trí Base CFrame!")
-                end
-            end
-        end
-    end)
-end
-
--- ==========================================
--- PHƯƠNG THỨC LOGIC ĐÀO & GACHA
--- ==========================================
 function CrystalMiner:GetFolder()
     local caveMine = workspace:FindFirstChild("Cave Mine")
     if caveMine then
-        return caveMine:FindFirstChild("Spawned Crystals") or caveMine:FindFirstChild("SpawnedCrystals")
+        return caveMine:FindFirstChild("Spawned Crystals") or caveMine:FindFirstChild("SpawnedCrystals") or caveMine
     end
     return workspace:FindFirstChild("Spawned Crystals") or workspace:FindFirstChild("SpawnedCrystals")
 end
@@ -202,32 +147,44 @@ end
 function CrystalMiner:GetBestTargetCrystal()
     local folder = self:GetFolder()
     if not folder then return nil end
+    
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
     local validCrystals = {}
-    for _, crystal in ipairs(folder:GetChildren()) do
-        if self:IsCrystalValid(crystal) then
-            local cf = self:GetTargetCFrame(crystal)
-            if cf then
-                table.insert(validCrystals, {
-                    Object = crystal,
-                    CFrame = cf,
-                    Distance = (hrp.Position - cf.Position).Magnitude,
-                    Rank = self.RarityRank[self:GetCrystalRarity(crystal.Name)] or 1,
-                    Size = self:GetCrystalSize(crystal)
-                })
+    
+    for _, item in ipairs(folder:GetDescendants()) do
+        if (item:IsA("Model") or item:IsA("BasePart")) and not item:IsA("Folder") then
+            local isRootModel = item:IsA("Model") or (item:IsA("BasePart") and not item.Parent:IsA("Model"))
+            
+            if isRootModel and self:IsCrystalValid(item) then
+                local cf = self:GetTargetCFrame(item)
+                if cf then
+                    table.insert(validCrystals, {
+                        Object = item,
+                        CFrame = cf,
+                        Distance = (hrp.Position - cf.Position).Magnitude,
+                        Rank = self.RarityRank[self:GetCrystalRarity(item.Name)] or 1,
+                        Size = self:GetCrystalSize(item)
+                    })
+                end
             end
         end
     end
+
     if #validCrystals == 0 then return nil end
 
     table.sort(validCrystals, function(a, b)
-        if a.Rank ~= b.Rank then return a.Rank > b.Rank
-        elseif a.Size ~= b.Size then return a.Size > b.Size
-        else return a.Distance < b.Distance end
+        if a.Rank ~= b.Rank then 
+            return a.Rank > b.Rank
+        elseif a.Size ~= b.Size then 
+            return a.Size > b.Size
+        else 
+            return a.Distance < b.Distance 
+        end
     end)
+
     return validCrystals[1].Object
 end
 
@@ -285,7 +242,6 @@ end
 function CrystalMiner:Start()
     self.Config.Enabled = true
     self:StartClickThread()
-    self:StartResetThread()
     
     if self.RunningThread then task.cancel(self.RunningThread) end
 
@@ -310,9 +266,9 @@ function CrystalMiner:Start()
                     local startTime = tick()
 
                     while self:IsTargetAlive(target) and self.Config.Enabled do
-                        -- Chống kẹt 1 quặng quá 60s
-                        if tick() - startTime >= 60 then
-                            warn("--> Đào quặng quá 1 phút, tự chuyển quặng khác!")
+                        -- Chuyển mục tiêu nếu đào quá 30 giây
+                        if tick() - startTime >= 30 then
+                            warn("--> Đào quặng quá 30 giây, tự chuyển quặng khác!")
                             self.BlacklistedCrystals[target] = true
                             break
                         end
@@ -344,19 +300,16 @@ function CrystalMiner:Stop()
     self.CurrentTarget = nil
     if self.ClickThread then task.cancel(self.ClickThread) end
     if self.RunningThread then task.cancel(self.RunningThread) end
-    if self.ResetThread then task.cancel(self.ResetThread) end
 end
 
--- KHỞI TẠO TẢI CẤU HÌNH CŨ
 local MiningSystem = CrystalMiner.new()
 MiningSystem:LoadConfig()
 
--- 2. GIAO DIỆN FLUENT UI
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "Auto Miner & Roll (Auto Reset Character)",
-    SubTitle = "v9.0 Auto Reset Every 60s Added",
+    Title = "Auto Miner & Roll Full v10.7",
+    SubTitle = "No Auto Reset",
     TabWidth = 150,
     Size = UDim2.fromOffset(530, 390),
     Acrylic = false,
@@ -370,7 +323,6 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "Cấu Hình / Config", Icon = "settings" })
 }
 
--- TAB 1: AUTO MINING
 Tabs.Miner:AddSection("Cấu Hình Tự Động Đào AFK")
 
 Tabs.Miner:AddToggle("ToggleAutoCrystals", {
@@ -394,7 +346,7 @@ Tabs.Miner:AddButton({
             MiningSystem:SaveConfig()
             Fluent:Notify({
                 Title = "Cập Nhật CFrame",
-                Content = "Đã lưu vị trí CFrame mới!",
+                Content = "Đã lưu vị trí CFrame mới thành công!",
                 Duration = 3
             })
         end
@@ -439,7 +391,6 @@ Tabs.Miner:AddSlider("CrystalDistanceOffset", {
     end
 })
 
--- TAB 2: AUTO ROLL PICKAXE GACHA
 Tabs.Gacha:AddSection("Tự Động Roll Cuốc (Pickaxe Gacha)")
 
 Tabs.Gacha:AddToggle("ToggleAutoRoll", {
@@ -475,32 +426,6 @@ Tabs.Gacha:AddSlider("RollDelaySlider", {
     end
 })
 
--- TAB 3: CẤU HÌNH RESET & WORKSPACE
-Tabs.Settings:AddSection("Cơ Chế Auto Reset Nhân Vật")
-
-Tabs.Settings:AddToggle("ToggleAutoReset", {
-    Title = "Tự Động Reset Nhân Vật",
-    Default = MiningSystem.Config.AutoResetEnabled,
-    Callback = function(Value)
-        MiningSystem.Config.AutoResetEnabled = Value
-        if Value and MiningSystem.Config.Enabled then
-            MiningSystem:StartResetThread()
-        else
-            if MiningSystem.ResetThread then task.cancel(MiningSystem.ResetThread) end
-        end
-        MiningSystem:SaveConfig()
-    end
-})
-
-Tabs.Settings:AddSlider("AutoResetIntervalSlider", {
-    Title = "Thời Gian Mỗi Lần Reset (Giây)",
-    Min = 30, Max = 300, Default = MiningSystem.Config.AutoResetInterval, Rounding = 0,
-    Callback = function(Value)
-        MiningSystem.Config.AutoResetInterval = Value
-        MiningSystem:SaveConfig()
-    end
-})
-
 Tabs.Settings:AddSection("Quản Lý File Config (Workspace)")
 
 Tabs.Settings:AddButton({
@@ -523,7 +448,6 @@ Tabs.Settings:AddButton({
     end
 })
 
--- NÚT TOGGLE UI MOBILE
 task.spawn(function()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
     if playerGui:FindFirstChild("MiningToggleGui") then playerGui.MiningToggleGui:Destroy() end
@@ -563,7 +487,7 @@ task.spawn(function()
 end)
 
 Fluent:Notify({
-    Title = "Auto Reset Activated",
-    Content = "Đã kích hoạt cơ chế Auto Reset sau 60s!",
+    Title = "Miner Script v10.7 Loaded",
+    Content = "Đã bỏ hoàn toàn tính năng Auto Reset!",
     Duration = 5
 })
